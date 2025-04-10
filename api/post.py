@@ -6,6 +6,7 @@ from __init__ import app
 from api.jwt_authorize import token_required
 from model.post import Post
 from model.channel import Channel
+from model.favorite import Favorite
 
 """
 This Blueprint object is used to define APIs for the Post model.
@@ -82,7 +83,6 @@ class PostAPI:
             return jsonify(json_ready)
 
         @token_required()
-        @token_required()
         def put(self):
             """
             Update a post.
@@ -91,27 +91,18 @@ class PostAPI:
             current_user = g.current_user
             # Obtain the request data
             data = request.get_json()
-            
-            # Validate the presence of the post ID and comment
-            if 'id' not in data:
-                return {'message': 'Post ID is required'}, 400
-            if 'comment' not in data:
-                return {'message': 'Post comment is required'}, 400
-
             # Find the current post from the database table(s)
             post = Post.query.get(data['id'])
             if post is None:
                 return {'message': 'Post not found'}, 404
-
-            # Update the comment field only
-            post._comment = data['comment']
-
-            # Save the updated post
+            # Update the post
+            post._title = data['title']
+            post._content = data['content']
+            post._channel_id = data['channel_id']
+            # Save the post
             post.update()
-            
-            # Return the updated post as a response
+            # Return response
             return jsonify(post.read())
-
 
         @token_required()
         def delete(self):
@@ -206,6 +197,38 @@ class PostAPI:
             # Return a JSON list, converting Python dictionaries to JSON format
             return jsonify(json_ready)
 
+    class _COLLECT(Resource):
+        @token_required()
+        def post(self):
+            """
+            Add/Remove a post to favorites.
+            """
+            current_user = g.current_user
+            data = request.get_json()
+            if 'post_id' not in data:
+                return {'message': 'Post ID is required'}, 400
+
+            # Check if the post is already in favorites
+            existing_favorite = Favorite.query.filter_by(user_id=current_user.id, post_id=data['post_id']).first()
+            if existing_favorite:
+                # delete the favorite
+                existing_favorite.delete()
+                return jsonify({"message": "Post removed from favorites"})
+            # add the favorite
+            favorite = Favorite(user_id=current_user.id, post_id=data['post_id'])
+            favorite.create()
+            return jsonify({"message": "Post added to favorites"})
+    
+        @token_required()
+        def get(self):
+            """
+            Retrieve all favorite posts for the current user.
+            """
+            current_user = g.current_user
+            favorites = Favorite.query.filter_by(user_id=current_user.id).all()
+            favorite_posts = [Post.query.get(fav.post_id).read() for fav in favorites]
+            return jsonify(favorite_posts)
+
     """
     Map the _CRUD, _USER, _BULK_CRUD, and _FILTER classes to the API endpoints for /post, /post/user, /posts, and /posts/filter.
     - The API resource class inherits from flask_restful.Resource.
@@ -218,3 +241,4 @@ class PostAPI:
     api.add_resource(_USER, '/post/user')
     api.add_resource(_BULK_CRUD, '/posts')
     api.add_resource(_FILTER, '/posts/filter')
+    api.add_resource(_COLLECT, '/post/collect')
