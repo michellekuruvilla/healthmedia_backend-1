@@ -5,6 +5,7 @@ from model.length import db, Length
 length_api = Blueprint('length_api', __name__, url_prefix='/api')
 api = Api(length_api)
 
+# GET all length posts / POST a new one / DELETE a post by ID
 class LengthAPI(Resource):
     def get(self):
         try:
@@ -47,6 +48,7 @@ class LengthAPI(Resource):
             post = Length.query.get(data['id'])
             if not post:
                 return jsonify({"error": "Post not found"}), 404
+
             json = post.read()
             db.session.delete(post)
             db.session.commit()
@@ -55,4 +57,23 @@ class LengthAPI(Resource):
             db.session.rollback()
             return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
+# New: GET the most efficient video length (highest engagement per minute)
+class BestLengthAPI(Resource):
+    def get(self):
+        try:
+            posts = Length.query.all()
+            if not posts:
+                return {"message": "No data available"}, 404
+
+            best = max(posts, key=lambda x: x.engagement / x.video_length if x.video_length else 0)
+            return {
+                "video_length": best.video_length,
+                "engagement": best.engagement,
+                "efficiency": best.engagement / best.video_length
+            }, 200
+        except Exception as e:
+            return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+# Register API endpoints
 api.add_resource(LengthAPI, '/lengths')
+api.add_resource(BestLengthAPI, '/lengths/best')
